@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: golang-kubernetes-api-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: golang-kubernetes-api
+  template:
+    metadata:
+      labels:
+        app: golang-kubernetes-api
+    spec:
+      containers:
+      - name: golang-kubernetes-api
+        image: andrewstewartelliott/golang-kubernetes-api:latest
+        imagePullPolicy: IfNotPresent      # Prevents K8s from pulling online
+        ports:
+        - containerPort: 8080
