@@ -96,3 +96,67 @@ func TestListPodsSortsByNamespaceAndName(t *testing.T) {
 		t.Fatalf("expected third pod to be alpha in kube-system namespace, got %#v", pods[2])
 	}
 }
+
+func TestListServicesSummarizesServiceState(t *testing.T) {
+	client := fake.NewSimpleClientset(&corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "default"},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeClusterIP,
+			ClusterIP: "10.0.0.1",
+			Ports:     []corev1.ServicePort{{Port: 80, Protocol: corev1.ProtocolTCP}},
+		},
+	})
+
+	services, err := listServices(context.Background(), client)
+	if err != nil {
+		t.Fatalf("listServices returned error: %v", err)
+	}
+
+	if len(services) != 1 {
+		t.Fatalf("expected 1 service summary, got %d", len(services))
+	}
+
+	got := services[0]
+	if got.Namespace != "default" {
+		t.Fatalf("expected namespace default, got %q", got.Namespace)
+	}
+	if got.Name != "api" {
+		t.Fatalf("expected service name api, got %q", got.Name)
+	}
+	if got.Type != string(corev1.ServiceTypeClusterIP) {
+		t.Fatalf("expected service type %q, got %q", corev1.ServiceTypeClusterIP, got.Type)
+	}
+	if got.ClusterIP != "10.0.0.1" {
+		t.Fatalf("expected cluster IP 10.0.0.1, got %q", got.ClusterIP)
+	}
+	if len(got.Ports) != 1 || got.Ports[0] != "80/TCP" {
+		t.Fatalf("expected ports [80/TCP], got %v", got.Ports)
+	}
+}
+
+func TestListServicesSortsByNamespaceAndName(t *testing.T) {
+	client := fake.NewSimpleClientset(
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "zeta", Namespace: "default"}},
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "alpha", Namespace: "kube-system"}},
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "beta", Namespace: "default"}},
+	)
+
+	services, err := listServices(context.Background(), client)
+	if err != nil {
+		t.Fatalf("listServices returned error: %v", err)
+	}
+
+	if len(services) != 3 {
+		t.Fatalf("expected 3 service summaries, got %d", len(services))
+	}
+
+	if services[0].Namespace != "default" || services[0].Name != "beta" {
+		t.Fatalf("expected first service to be beta in default namespace, got %#v", services[0])
+	}
+	if services[1].Namespace != "default" || services[1].Name != "zeta" {
+		t.Fatalf("expected second service to be zeta in default namespace, got %#v", services[1])
+	}
+	if services[2].Namespace != "kube-system" || services[2].Name != "alpha" {
+		t.Fatalf("expected third service to be alpha in kube-system namespace, got %#v", services[2])
+	}
+}

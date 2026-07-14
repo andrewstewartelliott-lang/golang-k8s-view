@@ -24,9 +24,24 @@ type podSummary struct {
 	Node      string `json:"node,omitempty"`
 }
 
+type serviceSummary struct {
+	Namespace string   `json:"namespace"`
+	Name      string   `json:"name"`
+	Type      string   `json:"type"`
+	ClusterIP string   `json:"clusterIP"`
+	Ports     []string `json:"ports,omitempty"`
+}
+
 func main() {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
+
+	router.GET("/", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"message":   "Kubernetes resource listing service",
+			"endpoints": []string{"/pods", "/services"},
+		})
+	})
 
 	router.GET("/pods", func(c *gin.Context) {
 		client, err := newKubeClient()
@@ -42,6 +57,22 @@ func main() {
 		}
 
 		c.JSON(http.StatusOK, pods)
+	})
+
+	router.GET("/services", func(c *gin.Context) {
+		client, err := newKubeClient()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		services, err := listServices(c.Request.Context(), client)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, services)
 	})
 
 	log.Println("listening on :8080")
@@ -108,4 +139,36 @@ func listPods(ctx context.Context, client kubernetes.Interface) ([]podSummary, e
 	})
 
 	return podSummaries, nil
+}
+
+func listServices(ctx context.Context, client kubernetes.Interface) ([]serviceSummary, error) {
+	items, err := client.CoreV1().Services("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	serviceSummaries := make([]serviceSummary, 0, len(items.Items))
+	for _, svc := range items.Items {
+		ports := make([]string, 0, len(svc.Spec.Ports))
+		for _, port := range svc.Spec.Ports {
+			ports = append(ports, fmt.Sprintf("%d/%s", port.Port, port.Protocol))
+		}
+
+		serviceSummaries = append(serviceSummaries, serviceSummary{
+			Namespace: svc.Namespace,
+			Name:      svc.Name,
+			Type:      string(svc.Spec.Type),
+			ClusterIP: svc.Spec.ClusterIP,
+			Ports:     ports,
+		})
+	}
+
+	sort.Slice(serviceSummaries, func(i, j int) bool {
+		if serviceSummaries[i].Namespace != serviceSummaries[j].Namespace {
+			return serviceSummaries[i].Namespace < serviceSummaries[j].Namespace
+		}
+		return serviceSummaries[i].Name < serviceSummaries[j].Name
+	})
+
+	return serviceSummaries, nil
 }
