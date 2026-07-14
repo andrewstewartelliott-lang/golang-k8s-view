@@ -18,6 +18,14 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+var (
+	buildConfigFromFlags    = clientcmd.BuildConfigFromFlags
+	inClusterConfig         = rest.InClusterConfig
+	newKubeClientFromConfig = func(cfg *rest.Config) (kubernetes.Interface, error) {
+		return kubernetes.NewForConfig(cfg)
+	}
+)
+
 type podSummary struct {
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
@@ -204,7 +212,7 @@ func buildRouter(podListerInstance podLister, rbacEnforcerInstance rbacEnforcer)
 		})
 	})
 	router.GET("/pods", func(c *gin.Context) {
-		handlePods(c, podListerInstance)
+		handlePods(c, podListerInstance, rbacEnforcerInstance)
 	})
 	router.POST("/rbac/ensure-view", func(c *gin.Context) {
 		handleEnsureView(c, rbacEnforcerInstance)
@@ -212,18 +220,36 @@ func buildRouter(podListerInstance podLister, rbacEnforcerInstance rbacEnforcer)
 	return router
 }
 
-func handlePods(c *gin.Context, lister podLister) {
+func handlePods(c *gin.Context, lister podLister, enforcer rbacEnforcer) {
 	if lister == nil {
 		lister = newPodLister()
 	}
+	if enforcer == nil {
+		enforcer = newRBACEnforcer()
+	}
 
 	pods, err := lister.ListPods(c.Request.Context())
+	if err != nil && shouldRetryWithRBAC(err) {
+		if ensureErr := ensureViewAccessForCurrentServiceAccount(c.Request.Context(), enforcer); ensureErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to grant pod view access: %v", ensureErr)})
+			return
+		}
+		pods, err = lister.ListPods(c.Request.Context())
+	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to list pods: %v", err)})
 		return
 	}
 
 	c.JSON(http.StatusOK, pods)
+}
+
+func shouldRetryWithRBAC(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "forbidden") || strings.Contains(message, "unauthorized") || strings.Contains(message, "cannot access")
 }
 
 func handleEnsureView(c *gin.Context, enforcer rbacEnforcer) {
@@ -275,6 +301,26 @@ func newPodLister() podLister {
 	return kubePodLister{client: client}
 }
 
+func ensureViewAccessForCurrentServiceAccount(ctx context.Context, enforcer rbacEnforcer) error {
+	serviceAccountName := os.Getenv("SERVICE_ACCOUNT_NAME")
+	serviceAccountNamespace := os.Getenv("SERVICE_ACCOUNT_NAMESPACE")
+	if serviceAccountNamespace == "" {
+		serviceAccountNamespace = os.Getenv("POD_NAMESPACE")
+	}
+	if serviceAccountNamespace == "" {
+		if namespaceBytes, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace"); err == nil {
+			serviceAccountNamespace = strings.TrimSpace(string(namespaceBytes))
+		}
+	}
+	if serviceAccountName == "" {
+		serviceAccountName = "default"
+	}
+	if serviceAccountNamespace == "" {
+		serviceAccountNamespace = "default"
+	}
+	return enforcer.EnsureViewClusterRole(ctx, serviceAccountName, serviceAccountNamespace)
+}
+
 func newRBACEnforcer() rbacEnforcer {
 	client, err := newKubeClient()
 	if err != nil {
@@ -285,16 +331,20 @@ func newRBACEnforcer() rbacEnforcer {
 
 func newKubeClient() (kubernetes.Interface, error) {
 	if kubeconfig := os.Getenv("KUBECONFIG"); kubeconfig != "" {
-		config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-		if err != nil {
-			return nil, err
+		config, err := buildConfigFromFlags("", kubeconfig)
+		if err == nil {
+			return newKubeClientFromConfig(config)
 		}
-		return kubernetes.NewForConfig(config)
 	}
 
-	config, err := rest.InClusterConfig()
+	config, err := buildConfigFromFlags("", "")
+	if err == nil {
+		return newKubeClientFromConfig(config)
+	}
+
+	config, err = inClusterConfig()
 	if err != nil {
 		return nil, err
 	}
-	return kubernetes.NewForConfig(config)
+	return newKubeClientFromConfig(config)
 }
