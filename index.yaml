@@ -3,6 +3,16 @@ entries:
   chart-golang-k8s-viewer:
   - apiVersion: v2
     appVersion: 1.16.0
+    created: "2026-07-15T04:20:15.725772328Z"
+    description: A Helm chart for Kubernetes
+    digest: a30cac50d1cd2b381a68cba0c4c206e7c02aca8f5f919a2b83287c4a0be1d9af
+    name: chart-golang-k8s-viewer
+    type: application
+    urls:
+    - https://andrewstewartelliott-lang.github.io/golang-k8s-view/chart-golang-k8s-viewer-0.1.6.tgz
+    version: 0.1.6
+  - apiVersion: v2
+    appVersion: 1.16.0
     created: "2026-07-15T04:16:21.506111403Z"
     description: A Helm chart for Kubernetes
     digest: 848d184b33829d157ed50603f9bb551badffcefb448457222a4fb816b93e1a0a
@@ -21,4 +31,4 @@ entries:
     urls:
     - https://andrewstewartelliott-lang.github.io/golang-k8s-view/chart-golang-k8s-viewer-0.1.4.tgz
     version: 0.1.4
-generated: "2026-07-15T04:16:21.50540724Z"
+generated: "2026-07-15T04:20:15.72499895Z"
