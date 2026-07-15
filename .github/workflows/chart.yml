@@ -42,8 +42,8 @@ jobs:
 
       - name: Package and push helm chart
         run: |
-          helm package ./charts/sample-app --version ${{ steps.set-variables.outputs.VERSION }}
-          helm push ./sample-app-chart-${{ steps.set-variables.outputs.VERSION }}.tgz oci://${{ steps.set-variables.outputs.REPOSITORY }}/charts
+          helm package ./charts/chart-golang-k8s-viewer --version ${{ steps.set-variables.outputs.VERSION }}
+          helm push ./chart-golang-k8s-viewer-${{ steps.set-variables.outputs.VERSION }}.tgz oci://${{ steps.set-variables.outputs.REPOSITORY }}/charts
   
   publish-helm-chart:
     permissions:
