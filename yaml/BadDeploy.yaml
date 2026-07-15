@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: golang-k8s-view-deployment
+  name: golang-k8s-view-deployment2
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: golang-k8s-view
+      app: golang-k8s-view2
   template:
     metadata:
       labels:
-        app: golang-k8s-view
+        app: golang-k8s-view2
     spec:
       containers:
-      - name: golang-k8s-view
-        image: andrewstewartelliott/golang-k8s-view:latest
+      - name: golang-k8s-view2
+        image: andrewstewartelliott/golang-k8s-view:latestsdf
         imagePullPolicy: IfNotPresent      # Prevents K8s from pulling online
         ports:
         - containerPort: 8080
