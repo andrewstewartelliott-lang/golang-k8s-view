@@ -9,4 +9,4 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: golang-k8s-view
-  namespace: default
+  namespace: argocd
