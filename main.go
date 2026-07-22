@@ -10,6 +10,12 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel"
+	prometheusExporter "go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/sdk/metric"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -33,8 +39,45 @@ type serviceSummary struct {
 }
 
 func main() {
+	metricsProvider, metricsHandler, err := setupMetrics()
+	if err != nil {
+		log.Fatalf("failed to configure metrics: %v", err)
+	}
+
+	router := newRouter(metricsProvider, metricsHandler)
+
+	log.Println("listening on :8080")
+	if err := router.Run(":8080"); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func setupMetrics() (*metric.MeterProvider, http.Handler, error) {
+	registry := prometheus.NewRegistry()
+	exporter, err := prometheusExporter.New(prometheusExporter.WithRegisterer(registry))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	provider := metric.NewMeterProvider(metric.WithReader(exporter))
+	otel.SetMeterProvider(provider)
+
+	handler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
+	return provider, handler, nil
+}
+
+func newRouter(provider *metric.MeterProvider, metricsHandler http.Handler) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
+	router.Use(otelgin.Middleware("golang-k8s-view"))
+
+	router.GET("/metrics", func(c *gin.Context) {
+		if metricsHandler != nil {
+			metricsHandler.ServeHTTP(c.Writer, c.Request)
+			return
+		}
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "metrics handler unavailable"})
+	})
 
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -75,10 +118,7 @@ func main() {
 		c.JSON(http.StatusOK, services)
 	})
 
-	log.Println("listening on :8080")
-	if err := router.Run(":8080"); err != nil {
-		log.Fatal(err)
-	}
+	return router
 }
 
 func newKubeClient() (kubernetes.Interface, error) {

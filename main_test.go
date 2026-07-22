@@ -2,12 +2,48 @@ package main
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
+
+func TestNewRouterRespondsToRoot(t *testing.T) {
+	router := newRouter(nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Kubernetes resource listing service") {
+		t.Fatalf("expected response body to mention service description, got %q", w.Body.String())
+	}
+}
+
+func TestNewRouterRespondsToMetrics(t *testing.T) {
+	router := newRouter(nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = w.Write([]byte("test_metric 1"))
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "test_metric 1") {
+		t.Fatalf("expected metrics body to contain sample metric, got %q", w.Body.String())
+	}
+}
 
 func TestListPodsSummarizesPodState(t *testing.T) {
 	client := fake.NewSimpleClientset(&corev1.Pod{
