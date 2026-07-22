@@ -13,7 +13,7 @@ import (
 )
 
 func TestNewRouterRespondsToRoot(t *testing.T) {
-	router := newRouter(nil, nil)
+	router := newRouter(nil)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
 
@@ -28,7 +28,7 @@ func TestNewRouterRespondsToRoot(t *testing.T) {
 }
 
 func TestNewRouterRespondsToMetrics(t *testing.T) {
-	router := newRouter(nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	router := newRouter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = w.Write([]byte("test_metric 1"))
 	}))
